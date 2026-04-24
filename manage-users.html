@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Người Dùng</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(180deg, #050816 0%, #090d22 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+        .table-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="p-6 md:p-10">
+    <div class="max-w-7xl mx-auto">
+        <header class="flex justify-between items-center mb-8 pb-4 border-b border-white/10">
+            <div>
+                <h1 class="text-3xl font-black text-amber-500">⚙ Quản Lý Người Dùng</h1>
+                <p class="text-slate-400 mt-1">Trang dành riêng cho Admin Quản Trị Hệ Thống</p>
+            </div>
+            <a href="menu.html" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-semibold transition text-white">⬅ Quay lại Menu</a>
+        </header>
+
+        <!-- Thống kê chung -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" id="statsContainer">
+            <!-- Render by JS -->
+        </div>
+
+        <div class="table-container rounded-2xl overflow-hidden shadow-2xl">
+            <div class="p-5 border-b border-white/10 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Danh sách hội viên</h2>
+                <button onclick="openCreateModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow transition">+ Thêm Mới</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-black/40 text-slate-400 uppercase text-xs font-bold tracking-wider">
+                        <tr>
+                            <th class="px-6 py-4">Tên Đăng Nhập</th>
+                            <th class="px-6 py-4">TikTok ID</th>
+                            <th class="px-6 py-4">Vai Trò</th>
+                            <th class="px-6 py-4">Trạng Thái</th>
+                            <th class="px-6 py-4 text-right">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTbody" class="divide-y divide-white/5">
+                        <tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">Đang tải dữ liệu...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Form (Dùng chung cho Create & Edit) -->
+    <div id="userModal" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4 backdrop-blur-sm">
+        <div class="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 id="modalTitle" class="text-2xl font-bold mb-6">Thêm User Mới</h3>
+            
+            <form id="userForm" class="space-y-4">
+                <input type="hidden" id="editUserId">
+                
+                <div id="usernameGroup">
+                    <label class="block text-sm text-slate-400 mb-1">Username (Chỉ nhập lúc tạo mới)</label>
+                    <input type="text" id="mUsername" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-amber-500">
+                </div>
+
+                <div id="passwordGroup">
+                    <label class="block text-sm text-slate-400 mb-1">Pass (Chỉ nhập lúc tạo mới)</label>
+                    <input type="text" id="mPassword" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">TikTok ID</label>
+                    <input type="text" id="mTiktokId" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-amber-500" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Quyền (Role)</label>
+                        <select id="mRole" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-amber-500">
+                            <option value="user">User Thường</option>
+                            <option value="admin">Quản Trị Viên (Admin)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Quyền Game (Allowed Games)</label>
+                        <div class="space-y-2 mt-2 bg-black/50 border border-white/10 rounded-xl p-3">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="allowedGames[]" value="racing" class="w-4 h-4 text-amber-500 bg-slate-900 border-white/20 rounded focus:ring-amber-500">
+                                <span class="text-sm text-slate-200">Đua Xe (Racing)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="allowedGames[]" value="block" class="w-4 h-4 text-amber-500 bg-slate-900 border-white/20 rounded focus:ring-amber-500">
+                                <span class="text-sm text-slate-200">Block Grid</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="allowedGames[]" value="balloon" class="w-4 h-4 text-amber-500 bg-slate-900 border-white/20 rounded focus:ring-amber-500">
+                                <span class="text-sm text-slate-200">Bong Bóng Nước</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-8">
+                    <button type="button" onclick="closeModal()" class="w-full py-2.5 rounded-xl border border-white/20 hover:bg-white/10 font-semibold transition text-slate-300">Hủy</button>
+                    <button type="submit" class="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg transition">LƯU LẠI</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Check Authorization
+        const loggedInUser = JSON.parse(localStorage.getItem('user'));
+        if (!loggedInUser || loggedInUser.role !== 'admin') {
+            alert('🚫 Bạn không có quyền truy cập trang này. Vui lòng đăng xuất hoặc đăng nhập bằng tài khoản Administrator.');
+            window.location.href = 'menu.html';
+        }
+
+        const API_BASE = "http://localhost:3000/api/users";
+        let userList = [];
+
+        async function fetchUsers() {
+            try {
+                const res = await fetch(API_BASE);
+                const data = await res.json();
+                userList = data;
+                renderTable();
+            } catch (err) {
+                console.error("Lỗi get data", err);
+                alert("Lỗi kết nối CSDL!");
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('usersTbody');
+            tbody.innerHTML = '';
+
+            let totalAdmin = 0;
+            let totalWaiting = 0;
+
+            userList.forEach(u => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/5 transition";
+
+                if(u.role === 'admin') totalAdmin++;
+                if(!u.allowedGames || u.allowedGames.length === 0) totalWaiting++;
+
+                const roleBadge = u.role === 'admin' 
+                    ? `<span class="px-2 py-1 bg-amber-500/20 text-amber-400 rounded text-xs font-bold border border-amber-500/30">ADMIN</span>`
+                    : `<span class="px-2 py-1 bg-slate-500/20 text-slate-300 rounded text-xs font-bold tracking-wide">USER</span>`;
+                
+                const gamesBadge = (u.allowedGames && u.allowedGames.length > 0)
+                    ? `<div class="flex flex-wrap gap-1">` + u.allowedGames.map(g => `<span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-[10px] font-bold border border-emerald-500/30 uppercase">${g}</span>`).join('') + `</div>`
+                    : `<span class="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs font-bold border border-red-500/30">Khóa (0 game)</span>`;
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-semibold">${u.username}</td>
+                    <td class="px-6 py-4 text-slate-300">@${u.tiktokId}</td>
+                    <td class="px-6 py-4">${roleBadge}</td>
+                    <td class="px-6 py-4">${gamesBadge}</td>
+                    <td class="px-6 py-4 text-right space-x-3">
+                        <button onclick="openEditModal('${u._id}')" class="text-sky-400 hover:text-sky-300 font-semibold hover:underline">Sửa</button>
+                        <button onclick="confirmDelete('${u._id}', '${u.username}')" class="text-rose-400 hover:text-rose-300 font-semibold hover:underline">Xóa</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Update stats
+            document.getElementById('statsContainer').innerHTML = `
+                <div class="bg-indigo-900/40 border border-indigo-500/30 p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">Tổng Số Tài Khoản</div>
+                    <div class="text-2xl font-black text-indigo-300">${userList.length}</div>
+                </div>
+                <div class="bg-red-900/30 border border-red-500/30 p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">Đang Bị Khóa</div>
+                    <div class="text-2xl font-black text-red-300">${totalWaiting}</div>
+                </div>
+                <div class="bg-amber-900/30 border border-amber-500/30 p-4 rounded-xl">
+                    <div class="text-slate-400 text-sm mb-1">Ban Quản Trị</div>
+                    <div class="text-2xl font-black text-amber-300">${totalAdmin}</div>
+                </div>
+            `;
+        }
+
+        /* --- Modal Controller --- */
+        const modal = document.getElementById('userModal');
+        const form = document.getElementById('userForm');
+
+        function openCreateModal() {
+            document.getElementById('modalTitle').textContent = "Thêm Người Dùng";
+            form.reset();
+            document.getElementById('editUserId').value = "";
+            
+            document.getElementById('mUsername').disabled = false;
+            document.getElementById('mPassword').disabled = false;
+            document.getElementById('usernameGroup').style.display = 'block';
+            document.getElementById('passwordGroup').style.display = 'block';
+            
+            document.getElementById('mUsername').required = true;
+            document.getElementById('mPassword').required = true;
+
+            const checkboxes = document.querySelectorAll('input[name="allowedGames[]"]');
+            checkboxes.forEach(cb => cb.checked = false);
+
+            modal.classList.remove('hidden');
+        }
+
+        function openEditModal(id) {
+            const u = userList.find(x => x._id === id);
+            if (!u) return;
+
+            document.getElementById('modalTitle').textContent = `Sửa: ${u.username}`;
+            document.getElementById('editUserId').value = id;
+            
+            // Xóa required & ẩn đi ko cho đổi pass/user nữa 
+            document.getElementById('mUsername').disabled = true;
+            document.getElementById('mPassword').disabled = true;
+            document.getElementById('mUsername').required = false;
+            document.getElementById('mPassword').required = false;
+            document.getElementById('usernameGroup').style.display = 'none';
+            document.getElementById('passwordGroup').style.display = 'none';
+            
+
+            document.getElementById('mTiktokId').value = u.tiktokId;
+            document.getElementById('mRole').value = u.role;
+            
+            const checkboxes = document.querySelectorAll('input[name="allowedGames[]"]');
+            checkboxes.forEach(cb => {
+                cb.checked = u.allowedGames && u.allowedGames.includes(cb.value);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+        }
+
+        // Submitting Form
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editUserId').value;
+            const tiktokId = document.getElementById('mTiktokId').value;
+            const role = document.getElementById('mRole').value;
+            
+            const checkboxes = document.querySelectorAll('input[name="allowedGames[]"]:checked');
+            const allowedGames = Array.from(checkboxes).map(cb => cb.value);
+
+            try {
+                if (id) {
+                    // Update
+                    await fetch(`${API_BASE}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tiktokId, role, allowedGames })
+                    });
+                } else {
+                    // Create
+                    const username = document.getElementById('mUsername').value;
+                    const password = document.getElementById('mPassword').value;
+                    await fetch(`${API_BASE}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password, tiktokId, role, allowedGames })
+                    });
+                }
+                closeModal();
+                fetchUsers();
+            } catch (err) {
+                alert("Thao tác thất bại!");
+                console.error(err);
+            }
+        });
+
+        // Xóa Data
+        async function confirmDelete(id, name) {
+            if (confirm(`Bạn có chắc chắn muốn XÓA vĩnh viễn user ${name}?`)) {
+                try {
+                    await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+                    fetchUsers();
+                } catch (err) {
+                    alert('Lỗi xóa user');
+                }
+            }
+        }
+
+        // Init
+        fetchUsers();
+    </script>
+</body>
+</html>

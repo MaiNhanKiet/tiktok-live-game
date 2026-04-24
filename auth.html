@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập / Đăng ký</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(180deg, #050816 0%, #090d22 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .btn-gradient {
+            background: linear-gradient(to right, #06b6d4, #3b82f6);
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .btn-gradient:hover {
+            transform: scale(1.02);
+            opacity: 0.9;
+        }
+        input {
+            background: rgba(15, 23, 42, 0.8) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            color: white !important;
+        }
+        input:focus {
+            border-color: #38bdf8 !important;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glass-panel w-full max-w-md p-8 m-4">
+        <h1 class="text-3xl font-black text-center mb-6" id="formTitle">Đăng Nhập</h1>
+        
+        <!-- Error Alert -->
+        <div id="errorAlert" class="hidden bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl mb-6 text-sm">
+        </div>
+
+        <!-- Success Alert -->
+        <div id="successAlert" class="hidden bg-emerald-500/20 border border-emerald-500/50 text-emerald-200 px-4 py-3 rounded-xl mb-6 text-sm">
+        </div>
+
+        <form id="authForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Tên đăng nhập</label>
+                <input type="text" id="username" required class="w-full rounded-xl px-4 py-3">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Mật khẩu</label>
+                <input type="password" id="password" required class="w-full rounded-xl px-4 py-3">
+            </div>
+
+            <div id="tiktokIdField" class="hidden">
+                <label class="block text-sm font-medium text-slate-300 mb-1">TikTok ID</label>
+                <input type="text" id="tiktokId" class="w-full rounded-xl px-4 py-3" placeholder="vd: thoc.tv">
+            </div>
+
+            <button type="submit" class="btn-gradient w-full py-3 rounded-xl font-bold mt-4 shadow-lg shadow-blue-500/30" id="submitBtn">
+                ĐĂNG NHẬP
+            </button>
+        </form>
+
+        <div class="mt-6 text-center text-sm text-slate-400">
+            <span id="toggleText">Chưa có tài khoản?</span>
+            <button type="button" id="toggleModeBtn" class="text-sky-400 font-semibold hover:underline ml-1">Đăng ký ngay</button>
+        </div>
+    </div>
+
+    <script>
+        // Check if already logged in
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user) {
+            window.location.href = 'menu.html';
+        }
+
+        let isLoginMode = true;
+        
+        const formTitle = document.getElementById('formTitle');
+        const submitBtn = document.getElementById('submitBtn');
+        const toggleText = document.getElementById('toggleText');
+        const toggleModeBtn = document.getElementById('toggleModeBtn');
+        const tiktokIdField = document.getElementById('tiktokIdField');
+        const tiktokIdInput = document.getElementById('tiktokId');
+        const errorAlert = document.getElementById('errorAlert');
+        const successAlert = document.getElementById('successAlert');
+
+        toggleModeBtn.addEventListener('click', () => {
+            isLoginMode = !isLoginMode;
+            errorAlert.classList.add('hidden');
+            successAlert.classList.add('hidden');
+
+            if (isLoginMode) {
+                formTitle.textContent = 'Đăng Nhập';
+                submitBtn.textContent = 'ĐĂNG NHẬP';
+                toggleText.textContent = 'Chưa có tài khoản?';
+                toggleModeBtn.textContent = 'Đăng ký ngay';
+                tiktokIdField.classList.add('hidden');
+                tiktokIdInput.required = false;
+            } else {
+                formTitle.textContent = 'Đăng Ký';
+                submitBtn.textContent = 'ĐĂNG KÝ';
+                toggleText.textContent = 'Đã có tài khoản?';
+                toggleModeBtn.textContent = 'Đăng nhập';
+                tiktokIdField.classList.remove('hidden');
+                tiktokIdInput.required = true;
+            }
+        });
+
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorAlert.classList.add('hidden');
+            successAlert.classList.add('hidden');
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const tiktokId = document.getElementById('tiktokId').value;
+
+            const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+            const payload = { username, password };
+            if (!isLoginMode) payload.tiktokId = tiktokId;
+
+            // Update to your backend URL if it's not localhost:3000
+            const API_BASE = "http://localhost:3000";
+
+            try {
+                const res = await fetch(`${API_BASE}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Có lỗi xảy ra');
+                }
+
+                if (!isLoginMode) {
+                    // Registration success
+                    successAlert.textContent = data.message;
+                    successAlert.classList.remove('hidden');
+                    // auto switch to login
+                    setTimeout(() => toggleModeBtn.click(), 2000);
+                } else {
+                    // Login success
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    window.location.href = 'menu.html';
+                }
+
+            } catch (err) {
+                errorAlert.textContent = err.message;
+                errorAlert.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

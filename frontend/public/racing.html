@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Màn Hình Đua Xe TikTok</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: transparent;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* Container mô phỏng chuẩn màn hình dọc TikTok (1080x1920) */
+      #game-container {
+        width: 1080px;
+        height: 1920px;
+        /* Scale cho vừa với màn hình trình duyệt hiện tại */
+        transform-origin: top center;
+        background-color: transparent;
+        background-image: url("bg.png");
+        background-size: cover;
+        background-position: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .lane {
+        position: relative;
+        display: flex;
+        align-items: center;
+        box-sizing: border-box;
+      }
+
+      .racer {
+        position: absolute;
+        left: 0;
+        transition: left 0.3s ease-out;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        z-index: 10;
+      }
+
+      .racer-icon {
+        font-size: 80px;
+        filter: drop-shadow(4px 4px 10px rgba(0, 0, 0, 0.5));
+      }
+
+      .racer-info {
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 30px;
+        font-weight: bold;
+        white-space: nowrap;
+      }
+
+      .target-line {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 100px;
+        background-image: repeating-linear-gradient(
+          to bottom,
+          black 0,
+          black 50px,
+          white 50px,
+          white 100px
+        );
+        background-size: 100px 100px;
+        z-index: 5;
+      }
+
+      #lanes-wrapper {
+        position: absolute;
+        top: 15%;
+        bottom: 15%;
+        left: 5%;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around; /* Chia đều mảng dọc ra */
+        gap: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-container">
+      <!-- Bảng xếp hạng / Thống kê phía trên -->
+      <div
+        id="header-container"
+        class="absolute top-[4%] w-full flex flex-col items-center gap-2 z-20"
+      >
+        <div
+          id="goal-info"
+          class="w-max text-center text-white text-[45px] font-black drop-shadow-xl bg-black/40 px-8 py-2 rounded-full"
+        ></div>
+        <div
+          id="header"
+          class="w-max flex justify-center gap-12 text-white font-bold items-center bg-black/60 py-4 px-10 rounded-full shadow-lg"
+        ></div>
+      </div>
+
+      <!-- Vùng chứa các làn đua -->
+      <div
+        id="lanes-wrapper"
+        style="
+          position: absolute;
+          top: 15%;
+          bottom: 15%;
+          left: 5%;
+          right: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 40px;
+        "
+      >
+        <!-- Render động bằng JS -->
+      </div>
+
+      <!-- Đích đến hiển thị phía dưới -->
+      <div
+        id="footer"
+        class="absolute bottom-[3%] w-[90%] text-center z-20 text-white font-black bg-black/80 py-4 px-6 rounded-[30px] shadow-2xl left-1/2 -translate-x-1/2"
+      ></div>
+
+      <div
+        id="overlay"
+        class="absolute inset-0 bg-black/80 flex items-center justify-center flex-col hidden z-50"
+      >
+        <h1
+          id="winnerText"
+          class="text-white font-black text-[120px] uppercase text-center mb-8 drop-shadow-[0_10px_20px_rgba(255,0,0,0.8)]"
+        ></h1>
+        <button
+          onclick="hideOverlay()"
+          class="px-12 py-6 bg-white text-black text-5xl font-bold rounded-full cursor-pointer"
+        >
+          Ẩn thông báo
+        </button>
+      </div>
+    </div>
+
+    <script>
+      // Auth Validation
+      const user = JSON.parse(localStorage.getItem('user'));
+      if (!user || !user.isActive) {
+        window.location.href = 'auth.html';
+      }
+
+      // Tự động scale khung về vừa màn hình thật
+      function scaleContainer() {
+        const container = document.getElementById("game-container");
+        const scale = Math.min(
+          window.innerWidth / 1080,
+          window.innerHeight / 1920,
+        );
+        container.style.transform = `scale(${scale})`;
+      }
+      window.addEventListener("resize", scaleContainer);
+      scaleContainer();
+
+      // Cấu hình game
+      const socket = io("http://localhost:3000");
+
+      socket.on('user_permissions_updated', (updatedUser) => {
+          if (user && updatedUser.id === user.id) {
+              localStorage.setItem('user', JSON.stringify(updatedUser));
+              if (!updatedUser.isActive) {
+                  alert("Tài khoản của bạn đã bị khóa hoặc thay đổi quyền!");
+                  window.location.href = 'menu.html';
+              }
+          }
+      });
+      let config = null;
+      let progress = {}; // Lưu tiến độ của các id
+      let isGameOver = false;
+
+      const lanesWrapper = document.getElementById("lanes-wrapper");
+
+      // Bắt sự kiện setup game
+      socket.on("start-game", (gameConfig) => {
+        console.log("Nhận setup game:", gameConfig);
+        config = gameConfig;
+        progress = {};
+        isGameOver = false;
+        lanesWrapper.innerHTML = "";
+        document.getElementById("overlay").classList.add("hidden");
+
+        const totalLanes = config.lanes.length;
+        // Bỏ cách hiển thị chia phần trăm, chuyển sang xếp thẳng từ trên xuống bằng flex
+
+        // Hiển thị Footer
+        const footer = document.getElementById("footer");
+
+        const instructionHtml = config.lanes
+          .map((l) => {
+            const e = l.emoji || "🚗";
+            const f = l.flag || "🇩🇪";
+            return `<div class="flex flex-row items-center justify-center gap-4 bg-gray-800/90 px-4 py-2 rounded-2xl border-[2px] border-gray-600 shadow-inner w-full"><span class="transform scale-x-[-1] leading-none text-[50px] drop-shadow-md">${e}</span> <span class="text-yellow-400 text-4xl animate-pulse">👉</span> <span class="text-[50px] drop-shadow-md">${f}</span></div>`;
+          })
+          .join("");
+
+        footer.innerHTML = `
+          <div class="text-4xl text-yellow-300 font-extrabold mb-4 uppercase tracking-wider drop-shadow-lg">💬 Bình luận Emoji để nhấn ga</div>
+          <div class="grid grid-cols-2 gap-4 mb-2 px-8">
+            ${instructionHtml}
+          </div>
+        `;
+        footer.classList.remove("hidden"); // Hiển thị lại footer
+
+        // Chuẩn bị Header (Bảng điểm ngang)
+        const header = document.getElementById("header");
+        header.innerHTML = "";
+
+        // Thông báo đích đến nằm ngay dưới header
+        const goalInfo = document.getElementById("goal-info");
+        if (goalInfo) {
+          goalInfo.innerHTML = `🏁 Cần <span class="text-yellow-400 mx-2 text-[55px] font-black">${config.stepLimit}</span> điểm để tới đích! 🏁`;
+        }
+
+        config.lanes.forEach((lane) => {
+          progress[lane.id] = 0;
+
+          const emoji = lane.emoji || "🚗";
+          const flag = lane.flag || "🇩🇪";
+
+          // Khởi tạo thẻ header con cho từng xe
+          const headerItem = document.createElement("div");
+          headerItem.className = "flex items-center justify-center gap-4";
+          headerItem.innerHTML = `
+            <span class="text-[100px] drop-shadow-md transform scale-x-[-1] leading-none">${emoji}</span>
+            <span class="text-6xl text-yellow-300 font-black mt-1" id="score-${lane.id}">0</span>
+          `;
+          header.appendChild(headerItem);
+
+          const laneEl = document.createElement("div");
+          laneEl.className =
+            "lane relative w-full flex items-center justify-between";
+          // Hiển thị tracking: Xe - Món Quà Yêu Cầu
+          laneEl.innerHTML = `
+                    <div class="racer relative flex items-center" id="racer-${lane.id}">
+                        <!-- Thêm class transform scale-x-[-1] để đảo ngược icon xe để xe hướng về bên phải -->
+                        <div class="racer-icon drop-shadow-[4px_4px_10px_rgba(0,0,0,0.8)] text-[150px] z-20 transform scale-x-[-1] leading-none" style="display: inline-block;">${emoji}</div>
+                        ${lane.gift ? `<div class="racer-icon ml-4 animate-bounce text-[80px] z-20">${getGiftIcon(lane.gift)}</div>` : ""}
+                    </div>
+                `;
+          lanesWrapper.appendChild(laneEl);
+        });
+      });
+
+      function getGiftIcon(giftName) {
+        // Link dự phòng dựa trên dữ liệu thật của bạn (mUri -> .png)
+        if (giftName === "Rose")
+          return "<img src='https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/eba3a9bb85c33e017f3648eaf88d7189~tplv-obj.png' class='w-[60px] h-[60px] inline-block object-contain'/>";
+        // Tạm thời các quà chưa có link sẽ hiện lại Emoji cho đỡ bị lỗi icon ảnh vuông
+        if (giftName === "TikTok") return "🎵";
+        if (giftName === "GG") return "🎮";
+        if (giftName === "Heart") return "🩷";
+        if (giftName === "Doughnut") return "🍩";
+        if (giftName === "Ice Cream") return "🍦";
+        return "🎁";
+      }
+
+      // Bắt sự kiện có đối tượng (Like, Gift, Chat) kích hoạt tiến lên
+      // Cái này cần viết thêm logic bắn socket trong server.js dựa trên điều kiện của từng lane
+      socket.on("racer-move", (data) => {
+        if (isGameOver || !config) return;
+
+        const laneId = data.id;
+        const steps = data.steps || 1;
+
+        if (progress[laneId] !== undefined) {
+          progress[laneId] += steps;
+
+          const limit = config.stepLimit;
+          // Cập nhật điểm trên bảng điểm
+          const scoreEl = document.getElementById(`score-${laneId}`);
+          if (scoreEl) {
+            scoreEl.innerText =
+              progress[laneId] > limit ? limit : progress[laneId];
+          }
+
+          // Tính % quãng đường
+          let percent = (progress[laneId] / limit) * 100;
+
+          // Mắc kẹt cờ (trừ đi chiều dài của vạch đích và racer để không lố cờ)
+          if (percent >= 85) percent = 85;
+
+          const racerEl = document.getElementById(`racer-${laneId}`);
+          if (racerEl) racerEl.style.left = `${percent}%`;
+
+          // Kiểm tra win
+          if (progress[laneId] >= limit && !isGameOver) {
+            isGameOver = true;
+            showWinner(config.lanes.find((l) => l.id === laneId));
+          }
+        }
+      });
+
+      function showWinner(winner) {
+        const overlay = document.getElementById("overlay");
+        const winnerText = document.getElementById("winnerText");
+        winnerText.innerHTML = `🏆<br>${winner.name}<br>CHIẾN THẮNG!`;
+        winnerText.style.color = winner.color;
+        overlay.classList.remove("hidden");
+      }
+
+      function hideOverlay() {
+        document.getElementById("overlay").classList.add("hidden");
+      }
+    </script>
+  </body>
+</html>

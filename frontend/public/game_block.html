@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Block Grid Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            keyframes: {
+              pop: {
+                "0%": { transform: "scale(0.55)", opacity: "0" },
+                "100%": { transform: "scale(1)", opacity: "1" },
+              },
+            },
+            animation: {
+              pop: "pop 180ms ease-out",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background:
+          radial-gradient(
+            circle at top,
+            rgba(99, 102, 241, 0.22),
+            transparent 30%
+          ),
+          radial-gradient(
+            circle at bottom right,
+            rgba(236, 72, 153, 0.14),
+            transparent 28%
+          ),
+          linear-gradient(180deg, #050816 0%, #090d22 100%);
+      }
+
+      .board {
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.05) 1px,
+            transparent 1px
+          ),
+          rgba(13, 18, 48, 0.92);
+        background-size: calc(100% / 10) calc(100% / 10);
+      }
+
+      .block {
+        position: relative;
+        overflow: hidden;
+        border-radius: 0.9rem;
+        box-shadow:
+          inset 8px 8px 18px rgba(255, 255, 255, 0.15),
+          inset -12px -12px 18px rgba(0, 0, 0, 0.28),
+          0 10px 24px rgba(0, 0, 0, 0.32);
+      }
+
+      .block::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.34),
+          transparent 35%,
+          transparent 65%,
+          rgba(0, 0, 0, 0.18)
+        );
+        pointer-events: none;
+      }
+
+      .block::after {
+        content: "";
+        position: absolute;
+        inset: 10%;
+        border-radius: 0.7rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        pointer-events: none;
+      }
+
+      .block-inner {
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.05),
+          rgba(0, 0, 0, 0.15)
+        );
+        backdrop-filter: blur(6px);
+      }
+    </style>
+  </head>
+
+  <body class="min-h-screen text-white overflow-hidden">
+    <!-- Nút trở về Menu -->
+    <a href="menu.html" class="absolute top-4 left-4 z-50 rounded-full bg-slate-800/80 p-3 text-white shadow-lg hover:bg-slate-700 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+        </svg>
+    </a>
+
+    <!-- Overlay Tặng Quà Ở Giữa Màn Hình -->
+    <div id="giftAnnouncement" class="pointer-events-none fixed inset-0 z-50 flex items-start pt-[10vh] justify-center translate-y-10 opacity-0 transition-all duration-500">
+        <div class="flex items-center gap-4 rounded-full bg-gradient-to-r from-fuchsia-600/90 to-purple-600/90 px-8 py-4 shadow-[0_0_40px_rgba(217,70,239,0.5)] backdrop-blur-md border border-white/20">
+            <img id="announcementAvatar" src="https://via.placeholder.com/50" class="h-12 w-12 rounded-full border-2 border-white object-cover" />
+            <div class="text-left">
+                <div class="text-sm font-semibold text-fuchsia-200">Wow! Cảm ơn</div>
+                <div class="text-xl font-black text-white" id="announcementText">User đã gửi 1 x Hoa hồng</div>
+            </div>
+            <img id="announcementIcon" src="" class="h-16 w-16 object-contain mix-blend-screen drop-shadow-2xl" />
+        </div>
+    </div>
+
+    <div class="mx-auto flex h-screen w-full max-w-[1400px] flex-col gap-4 p-4">
+      <header
+        class="flex flex-col md:flex-row items-center justify-between rounded-3xl border border-white/10 bg-white/5 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl gap-4 ml-16"
+      >
+        <h1
+          class="text-2xl font-black text-center md:text-left md:text-4xl text-white"
+        >
+          Khối màu tương tác
+        </h1>
+        <div
+          class="flex flex-col items-center rounded-2xl border border-white/10 bg-slate-950/70 w-full md:w-auto px-6 py-3 md:items-end"
+        >
+          <div
+            class="text-[11px] font-semibold uppercase tracking-widest text-slate-400"
+          >
+            Trạng thái kết nối
+          </div>
+          <div
+            id="statusText"
+            class="mt-1 truncate text-lg font-bold text-emerald-300"
+          >
+            Chưa kết nối
+          </div>
+        </div>
+      </header>
+
+      <main class="grid gap-5 xl:grid-cols-[300px_1fr_320px] items-start">
+        <aside class="flex flex-col gap-5 sticky top-4 h-[calc(100vh-120px)] overflow-y-auto pr-2">
+          <section
+            class="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-6"
+          >
+            <h2 class="text-lg font-bold text-white mb-4">Điều khiển</h2>
+            <div class="flex flex-col gap-3">
+              <input
+                id="usernameInput"
+                type="text"
+                readonly
+                class="w-full rounded-2xl border border-white/10 bg-slate-800/80 px-4 py-3 text-slate-300 outline-none cursor-not-allowed"
+              />
+              <button
+                id="connectBtn"
+                class="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-3 font-bold text-white shadow-lg shadow-cyan-500/20 transition hover:scale-[1.01] hover:opacity-95"
+              >
+                Kết nối
+              </button>
+            </div>
+          </section>
+
+          <section
+            class="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-6"
+          >
+            <h2 class="text-lg font-bold text-white mb-4">Thống kê trận đấu</h2>
+            <div class="grid grid-cols-2 gap-3">
+              <div
+                class="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3"
+              >
+                <div class="text-xs text-slate-400">Khối</div>
+                <div id="activeCount" class="mt-1 font-bold text-xl text-white">
+                  0 / 100
+                </div>
+              </div>
+              <div
+                class="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3"
+              >
+                <div class="text-xs text-slate-400">Lượt Like</div>
+                <div id="likeCount" class="mt-1 font-bold text-xl text-sky-300">
+                  0
+                </div>
+              </div>
+              <div
+                class="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 col-span-2 text-center"
+              >
+                <div class="text-xs text-slate-400">Lượt Gift</div>
+                <div
+                  id="giftCount"
+                  class="mt-1 font-bold text-xl text-fuchsia-300"
+                >
+                  0
+                </div>
+              </div>
+            </div>
+
+            <button
+              id="retryBtn"
+              class="mt-5 hidden w-full rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
+            >
+              Chơi lại
+            </button>
+          </section>
+        </aside>
+
+        <section
+          class="relative rounded-3xl border border-white/10 bg-slate-950/50 p-4 shadow-2xl shadow-black/20 md:p-5 flex-1 flex flex-col justify-center min-h-[calc(100vh-120px)] overflow-hidden"
+        >
+          <div
+            id="gameArea"
+            class="board grid aspect-square w-full max-w-[80vh] mx-auto grid-cols-10 gap-1.5 md:gap-2 rounded-[1.75rem] border border-white/10 p-2 md:p-4"
+          ></div>
+
+          <div
+            id="gameOverOverlay"
+            class="pointer-events-none absolute inset-0 hidden items-center justify-center rounded-3xl bg-black/70 backdrop-blur-sm"
+          >
+            <div class="rounded-3xl border border-white/10 bg-slate-950 px-8 py-6 text-center shadow-2xl shadow-black/30">
+              <div class="text-4xl font-black text-red-400">GAME OVER</div>
+              <p class="mt-2 text-sm text-slate-300">Bàn đã đầy 100 khối. Hãy nhấn Chơi lại.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Sidebar for Chat and Gifts -->
+        <aside class="flex flex-col gap-4 sticky top-4 h-[calc(100vh-120px)] border border-white/10 bg-white/5 rounded-3xl p-4 overflow-hidden backdrop-blur-md">
+            <h3 class="text-xl font-bold bg-gradient-to-r from-pink-500 to-violet-500 bg-clip-text text-transparent border-b border-white/10 pb-2">Tương Tác Trực Tiếp</h3>
+            <div id="chatBox" class="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-white/10"></div>
+        </aside>
+      </main>
+    </div>
+
+    <script>
+      // Auth Validation
+      const user = JSON.parse(localStorage.getItem('user'));
+      if (!user) {
+        window.location.href = 'auth.html';
+      } else if (user.role !== 'admin' && (!user.allowedGames || !user.allowedGames.includes('block'))) {
+        alert("🚫 Bạn chưa được cấp quyền chơi Block Grid Game!");
+        window.location.href = 'menu.html';
+      }
+
+      const API_BASE = "http://localhost:3000";
+      const socket = io(API_BASE);
+
+      socket.on('user_permissions_updated', (updatedUser) => {
+          if (user && updatedUser.id === user.id) {
+              localStorage.setItem('user', JSON.stringify(updatedUser));
+              if (!updatedUser.isActive || (updatedUser.role !== 'admin' && (!updatedUser.allowedGames || !updatedUser.allowedGames.includes('block')))) {
+                  alert("Quyền truy cập của bạn đã thay đổi, bạn sẽ được đưa về Menu!");
+                  window.location.href = 'menu.html';
+              }
+          }
+      });
+
+      const colors = [
+        { base: "bg-red-500" },
+        { base: "bg-yellow-400" },
+        { base: "bg-green-500" },
+        { base: "bg-blue-500" },
+      ];
+
+      const gameState = {
+        connectedId: "",
+        activeItems: 0,
+        likes: 0,
+        gifts: 0,
+        isGameOver: false,
+        cells: [],
+      };
+      const els = {
+        statusText: document.getElementById("statusText"),
+        activeCount: document.getElementById("activeCount"),
+        likeCount: document.getElementById("likeCount"),
+        giftCount: document.getElementById("giftCount"),
+        usernameInput: document.getElementById("usernameInput"),
+        connectBtn: document.getElementById("connectBtn"),
+        retryBtn: document.getElementById("retryBtn"),
+        gameArea: document.getElementById("gameArea"),
+        gameOverOverlay: document.getElementById("gameOverOverlay"),
+      };
+
+      if (user) {
+        els.usernameInput.value = user.tiktokId;
+      }
+
+      function setStatus(text, colorClass) {
+        els.statusText.textContent = text;
+        els.statusText.title = text;
+        els.statusText.className = `mt-1 truncate text-sm sm:text-base font-bold ${colorClass}`;
+      }
+      function updateUI() {
+        els.activeCount.textContent = `${gameState.activeItems} / 100`;
+        els.likeCount.textContent = gameState.likes;
+        els.giftCount.textContent = gameState.gifts;
+        els.retryBtn.classList.toggle("hidden", !gameState.isGameOver);
+        els.gameOverOverlay.classList.toggle("hidden", !gameState.isGameOver);
+        els.gameOverOverlay.classList.toggle("flex", gameState.isGameOver);
+      }
+      function resetGame() {
+        gameState.activeItems = 0;
+        gameState.likes = 0;
+        gameState.gifts = 0;
+        gameState.isGameOver = false;
+        gameState.cells.forEach((cell) => {
+          cell.innerHTML = "";
+          cell.className =
+            "relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70";
+        });
+        updateUI();
+      }
+      function buildBoard() {
+        els.gameArea.innerHTML = "";
+        gameState.cells = [];
+        for (let i = 0; i < 100; i++) {
+          const cell = document.createElement("div");
+          cell.className =
+            "relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70";
+          cell.addEventListener("click", () => removeCell(cell));
+          els.gameArea.appendChild(cell);
+          gameState.cells.push(cell);
+        }
+      }
+      function removeCell(cell) {
+        if (!cell.firstElementChild) return;
+        cell.innerHTML = "";
+        if (gameState.activeItems > 0) gameState.activeItems -= 1;
+        updateUI();
+      }
+      function spawnBlock(type, data = {}) {
+        if (gameState.isGameOver) return;
+        const emptyCells = gameState.cells.filter(
+          (cell) => !cell.firstElementChild,
+        );
+        if (!emptyCells.length) {
+          gameState.isGameOver = true;
+          updateUI();
+          return;
+        }
+
+        const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const username = data.username || (type === "gift" ? "Fan" : "Fan");
+        const fallbackIcon = type === "gift" ? "🎁" : "♥";
+
+        let visualHtml = "";
+        const pic = data.profilePictureUrl || data.profilePicture;
+        
+        if (type === "gift" && data.giftPictureUrl) {
+          visualHtml = `<img src="${data.giftPictureUrl}" class="w-5 h-5 md:w-7 md:h-7 object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] shrink-0" alt="gift" />`;
+        } else if (pic && pic !== "https://via.placeholder.com/50") {
+          visualHtml = `<img src="${pic}" class="w-5 h-5 md:w-7 md:h-7 rounded-full border border-white/50 object-cover shadow-sm shrink-0 flex-none" alt="avatar" />`;
+        } else {
+          // Nếu không có ảnh đại diện thì hiển thị chữ cái đầu tiên tương tự chat
+          const initial = username ? username.charAt(0).toUpperCase() : "U";
+          visualHtml = `<div class="w-5 h-5 md:w-7 md:h-7 rounded-full bg-slate-600 flex items-center justify-center text-[10px] md:text-xs text-white shrink-0 flex-none border border-white/50">${initial}</div>`;
+        }
+
+        const block = document.createElement("button");
+        block.type = "button";
+        block.className = `block animate-pop absolute inset-0 m-0.5 md:m-1 border border-white/10 ${color.base} rounded-[0.6rem] md:rounded-[0.8rem]`;
+        block.addEventListener("click", (e) => {
+          e.stopPropagation();
+          removeCell(cell);
+        });
+        block.innerHTML = `<div class="block-inner flex h-full w-full flex-col items-center justify-center rounded-[inherit] text-center px-0.5"><div class="flex flex-col items-center justify-center">${visualHtml}</div><div class="mt-0.5 px-0.5 w-full text-[8px] md:text-[10px] font-bold text-white drop-shadow-md truncate leading-tight" title="${username}">${username}</div></div>`;
+        cell.appendChild(block);
+        gameState.activeItems += 1;
+        updateUI();
+        if (gameState.activeItems >= 100) {
+          gameState.isGameOver = true;
+          updateUI();
+        }
+      }
+      
+      function logChat(type, data = {}) {
+        const chatBox = document.getElementById("chatBox");
+        const chatItem = document.createElement("div");
+        chatItem.className = "text-sm animate-fade-in bg-white/5 rounded-lg p-2 flex gap-2 items-center border border-white/5";
+        
+        const username = data.username || "Fan";
+        const pic = data.profilePictureUrl || data.profilePicture;
+        const initial = username.charAt(0).toUpperCase();
+        const avatar = pic && pic !== "https://via.placeholder.com/50" 
+           ? `<img src="${pic}" class="w-6 h-6 rounded-full object-cover shrink-0 border border-white/30">`
+           : `<div class="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-[11px] font-bold shrink-0 border border-white/30 text-white">${initial}</div>`;
+
+        if (type === "like") {
+            chatItem.innerHTML = `${avatar}<div class="flex-1"><span class="font-bold text-sky-400">${username}</span> <span class="text-slate-300 ml-1">đã gửi ${data.likeCount || 1} tim ❤️</span></div>`;
+        } else if (type === "gift") {
+            const giftName = data.giftName || "Quà tặng";
+            const giftImg = data.giftPictureUrl ? `<img src="${data.giftPictureUrl}" class="h-5 inline" />` : "🎁";
+            chatItem.innerHTML = `${avatar}<div class="flex-1"><span class="font-bold text-fuchsia-400">${username}</span> <span class="text-slate-300 ml-1">đã gửi ${data.amount || 1} ${giftName} ${giftImg}</span></div>`;
+            
+            // Show middle screen announcement
+            const giftAnnouncement = document.getElementById("giftAnnouncement");
+            const avatarEl = document.getElementById("announcementAvatar");
+            const textEl = document.getElementById("announcementText");
+            const iconEl = document.getElementById("announcementIcon");
+            
+            if (data.profilePicture) avatarEl.src = data.profilePicture;
+            textEl.innerHTML = `<span class="text-fuchsia-400">${username}</span> gửi ${data.amount || 1} ${giftName}`;
+            if (data.giftPictureUrl) {
+                iconEl.src = data.giftPictureUrl;
+                iconEl.classList.remove('hidden');
+            } else {
+                iconEl.classList.add('hidden');
+            }
+
+            // Animate announcement
+            giftAnnouncement.classList.remove('opacity-0', 'translate-y-10');
+            giftAnnouncement.classList.add('opacity-100', 'translate-y-0');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                giftAnnouncement.classList.remove('opacity-100', 'translate-y-0');
+                giftAnnouncement.classList.add('opacity-0', 'translate-y-10');
+            }, 3000);
+        } else if (type === "comment") { // Just in case comments are added later
+            chatItem.innerHTML = `${avatar}<div class="flex-1"><span class="font-bold text-slate-100">${username}:</span> <span class="text-slate-300 ml-1 break-words">${data.comment || ""}</span></div>`;
+        }
+
+        if (chatItem.innerHTML) {
+            chatBox.appendChild(chatItem);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+      }
+
+      async function startListening() {
+        const username = els.usernameInput.value.trim();
+        if (!username) {
+          alert("Vui lòng nhập ID!");
+          return;
+        }
+        gameState.connectedId = username;
+        setStatus(`Đang kết nối @${username}`, "text-amber-300");
+        try {
+          const response = await fetch(`${API_BASE}/api/start-session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tiktokUsername: username }),
+          });
+          const result = await response.json();
+          if (!response.ok)
+            throw new Error(result?.error || "Không thể kết nối");
+          setStatus(
+            `Đã kết nối @${result?.data?.connectedId || username}`,
+            "text-emerald-300",
+          );
+        } catch (error) {
+          setStatus("Kết nối thất bại", "text-red-400");
+          alert(error.message || "Không thể kết nối tới server");
+        }
+      }
+      els.connectBtn.addEventListener("click", startListening);
+      els.usernameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") startListening();
+      });
+      els.retryBtn.addEventListener("click", () => {
+        resetGame();
+        setStatus(
+          gameState.connectedId
+            ? `Đã kết nối @${gameState.connectedId}`
+            : "Chưa kết nối",
+          "text-emerald-300",
+        );
+      });
+
+      // Ngắt kết nối backend khi người dùng reload trang (chủ động gọi API stop)
+      window.addEventListener("beforeunload", () => {
+        if (gameState.connectedId) {
+          navigator.sendBeacon(`${API_BASE}/api/stop-session`);
+        }
+      });
+
+      socket.on("connect", () => {
+        setStatus("Đã sẵn sàng", "text-emerald-300");
+      });
+      socket.on("tiktok-like", (data) => {
+        const count = Math.max(1, Number(data?.amount || data?.likeCount || 1));
+        gameState.likes += count;
+        logChat("like", data);
+        if (count >= 20) {
+            spawnBlock("like", data); 
+        }
+      });
+      socket.on("tiktok-gift", (data) => {
+        const amount = Math.max(1, Number(data?.amount || 1));
+        const diamondCount = Math.max(1, Number(data?.diamondCount || data?.diamonds || 1));
+        const totalCoins = amount * diamondCount;
+        gameState.gifts += amount; // keep gift count as raw number of gifts sent
+        
+        logChat("gift", data);
+        for(let i = 0; i < totalCoins; i++) {
+           // Small delay to prevent rendering block
+           setTimeout(() => {
+               spawnBlock("gift", data);
+           }, i * 30); // 30ms staggered spawn
+        }
+      });
+      socket.on("tiktok-chat", (data) => {
+        logChat("comment", data);
+        spawnBlock("comment", data);
+      });
+      socket.on("tiktok-disconnected", () => {
+        setStatus("Mất kết nối TikTok", "text-red-400");
+      });
+      socket.on("disconnect", () => {
+        setStatus("Mất kết nối socket", "text-red-400");
+      });
+      buildBoard();
+      updateUI();
+      setStatus("Chưa kết nối", "text-emerald-300");
+    </script>
+  </body>
+</html>

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cấu Hình Game Đua Xe TikTok</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  </head>
+  <body class="bg-gray-900 text-white min-h-screen p-8 font-sans">
+    <div class="max-w-6xl mx-auto">
+      <h1
+        class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-8 text-center drop-shadow-lg"
+      >
+        ⚙️ Bảng Điều Khiển Trận Đua
+      </h1>
+
+      <div
+        class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 mb-8 flex gap-8 items-end"
+      >
+        <div class="flex-1">
+          <label class="block text-gray-300 font-bold mb-2"
+            >TikTok ID (Username livestream)</label
+          >
+          <input
+            type="text"
+            id="tiktokId"
+            readonly
+            class="w-full bg-gray-800 border border-gray-700 text-gray-400 rounded px-4 py-2 mb-2 cursor-not-allowed"
+          />
+          <div id="connectionStatus" class="font-semibold text-gray-400">
+            Trạng thái: Chưa kết nối
+          </div>
+        </div>
+        <div class="flex-1 flex gap-4">
+          <button
+            type="button"
+            id="btnConnect"
+            onclick="connectTikTok()"
+            class="bg-blue-600 hover:bg-blue-500 w-full text-white font-bold py-2 px-6 rounded transition-all"
+          >
+            Kết Nối
+          </button>
+          <button
+            type="button"
+            id="btnDisconnect"
+            onclick="disconnectTikTok()"
+            class="bg-red-600 hover:bg-red-500 w-full text-white font-bold py-2 px-6 rounded transition-all hidden"
+          >
+            Ngắt Kết Nối
+          </button>
+        </div>
+        <div class="flex-1">
+          <label class="block text-gray-300 font-bold mb-2"
+            >Giới hạn bước (Đích đến)</label
+          >
+          <input
+            type="number"
+            id="stepLimit"
+            value="100"
+            class="w-full bg-gray-900 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-blue-500"
+            placeholder="VD: 100"
+          />
+        </div>
+      </div>
+
+      <form id="setupForm" onsubmit="startGame(event)">
+        <div
+          id="lanesContainer"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+        ></div>
+
+        <div class="text-center">
+          <button
+            type="submit"
+            id="btnStart"
+            disabled
+            class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-xl font-black px-12 py-4 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all transform hover:scale-105 opacity-50 cursor-not-allowed"
+          >
+            🚀 BẮT ĐẦU ĐUA
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      // Auth Validation
+      const user = JSON.parse(localStorage.getItem('user'));
+      if (!user || !user.isActive) {
+        window.location.href = 'auth.html';
+      }
+
+      // Auto fill tiktok ID
+      document.addEventListener("DOMContentLoaded", () => {
+         if (user) document.getElementById('tiktokId').value = user.tiktokId;
+      });
+
+      const socket = io("http://localhost:3000");
+
+      // Danh sách màu mặc định cho đẹp
+      const defaultColors = [
+        "#ef4444",
+        "#3b82f6",
+        "#eab308",
+        "#22c55e",
+        "#a855f7",
+        "#ec4899",
+        "#f97316",
+        "#06b6d4",
+      ];
+
+      const commonGifts = [
+        { name: "Rose", id: 5655, price: 1, icon: "🌹" },
+        { name: "TikTok", id: 5269, price: 1, icon: "🎵" },
+        { name: "GG", id: 6064, price: 1, icon: "🎮" },
+        { name: "Heart", id: 8256, price: 1, icon: "🩷" },
+        { name: "Doughnut", id: 5326, price: 1, icon: "🍩" },
+        { name: "Ice Cream", id: 8354, price: 1, icon: "🍦" },
+      ];
+
+      let isConnected = false;
+
+      socket.on("tiktok-disconnected", () => {
+        isConnected = false;
+        document.getElementById("connectionStatus").innerHTML =
+          "<span class='text-red-500'>Đã ngắt kết nối!</span>";
+        document.getElementById("btnConnect").classList.remove("hidden");
+        document.getElementById("btnConnect").innerText = "Thử lại (Retry)";
+        document.getElementById("btnDisconnect").classList.add("hidden");
+
+        document.getElementById("btnStart").disabled = true;
+        document
+          .getElementById("btnStart")
+          .classList.add("opacity-50", "cursor-not-allowed");
+      });
+
+      async function connectTikTok() {
+        const tiktokId = document.getElementById("tiktokId").value.trim();
+        if (!tiktokId) {
+          alert("Vui lòng nhập TikTok ID!");
+          return;
+        }
+
+        const statusEl = document.getElementById("connectionStatus");
+        const btnConnect = document.getElementById("btnConnect");
+
+        btnConnect.disabled = true;
+        statusEl.innerHTML =
+          "<span class='text-yellow-400'>⏳ Đang kết nối...</span>";
+
+        try {
+          const res = await fetch("http://localhost:3000/api/start-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tiktokUsername: tiktokId }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            isConnected = true;
+            statusEl.innerHTML = `<span class='text-green-500'>✅ Đã kết nối thành công: ${tiktokId}</span>`;
+            btnConnect.classList.add("hidden");
+            document.getElementById("btnDisconnect").classList.remove("hidden");
+
+            document.getElementById("btnStart").disabled = false;
+            document
+              .getElementById("btnStart")
+              .classList.remove("opacity-50", "cursor-not-allowed");
+          } else {
+            throw new Error(data.error || "Lỗi không xác định");
+          }
+        } catch (error) {
+          statusEl.innerHTML = `<span class='text-red-500'>❌ Lỗi kết nối: ${error.message}</span>`;
+          btnConnect.innerText = "Thử lại (Retry)";
+        } finally {
+          btnConnect.disabled = false;
+        }
+      }
+
+      async function disconnectTikTok() {
+        try {
+          await fetch("http://localhost:3000/api/stop-session", {
+            method: "POST",
+          });
+          isConnected = false;
+          document.getElementById("connectionStatus").innerHTML =
+            "<span class='text-gray-400'>Đã ngắt kết nối.</span>";
+          document.getElementById("btnConnect").classList.remove("hidden");
+          document.getElementById("btnConnect").innerText = "Kết Nối";
+          document.getElementById("btnDisconnect").classList.add("hidden");
+
+          document.getElementById("btnStart").disabled = true;
+          document
+            .getElementById("btnStart")
+            .classList.add("opacity-50", "cursor-not-allowed");
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      // Hàm vẽ form cài đặt dựa trên số làn
+      function renderLaneConfigs() {
+        const container = document.getElementById("lanesContainer");
+        const count = 4; // Cố định 4 làn đua
+        container.innerHTML = ""; // Xóa form cũ
+
+        let giftOptions = `<option value="">-- Không cần quà --</option>`;
+        commonGifts.forEach((g) => {
+          giftOptions += `<option value="${g.name}">[${g.price} xu] ${g.icon} ${g.name}</option>`;
+        });
+
+        const commentEmojis =
+          "🙂😀😄😆😅😂🤣😊☺️😌😉😏😍😘😗😙😚🤗😳🙃😇😈😛😝😜😋🤤🤓😎😒🙁☹️😞😔😖😓😢🤑😢😭😟😣😫😕😩".match(
+            /./gu,
+          ) || [];
+        let commentOptions = "";
+        commentEmojis.forEach((emoji) => {
+          commentOptions += `<option value="${emoji}">${emoji}</option>`;
+        });
+
+        const defaultVehicles =
+          "🚗🚕🚙🚌🚎🏎🚓🚑🚒🚐🚚🚛🚜🛴🚲🛵🏍🚁🚠🛥🚢".match(/./gu) || [];
+        let vehicleOptions = "";
+        defaultVehicles.forEach((v, index) => {
+          vehicleOptions += `<option value="${v}">${v}</option>`;
+        });
+
+        for (let i = 0; i < count; i++) {
+          // pre-select vehicle based on lane index if possible, otherwise first vehicle
+          const preSelectedVehicleStr = vehicleOptions.replace(
+            `value="${defaultVehicles[i % defaultVehicles.length]}"`,
+            `value="${defaultVehicles[i % defaultVehicles.length]}" selected`,
+          );
+          const preSelectedCommentStr = commentOptions.replace(
+            `value="${commentEmojis[i % commentEmojis.length]}"`,
+            `value="${commentEmojis[i % commentEmojis.length]}" selected`,
+          );
+
+          const laneHtml = `
+                    <div class="bg-gray-800 p-5 rounded-xl border-t-4 shadow-lg" style="border-color: ${defaultColors[i]}">
+                        <h2 class="text-xl font-bold mb-4">Làn Xe ${i + 1}</h2>
+                        
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">Tên Tay Đua</label>
+                                <input type="text" id="name-${i}" value="Racer ${i + 1}" required class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 focus:border-blue-500">
+                            </div>
+                            
+                            <div class="flex gap-3">
+                                <div class="flex-1">
+                                    <label class="block text-sm text-gray-400 mb-1">Comment:</label>
+                                    <select id="flag-${i}" class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-center text-xl focus:border-blue-500">
+                                        ${preSelectedCommentStr}
+                                    </select>
+                                </div>
+                                <div class="flex-1">
+                                    <label class="block text-sm text-gray-400 mb-1">Icon Xe</label>
+                                    <select id="emoji-${i}" class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-center text-xl focus:border-blue-500">
+                                        ${preSelectedVehicleStr}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">Quà Kích Hoạt (Tùy chọn)</label>
+                                <select id="gift-${i}" class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 focus:border-blue-500">
+                                    ${giftOptions}
+                                </select>
+                            </div>
+                            
+                            <div>
+                               <input type="hidden" id="color-${i}" value="${defaultColors[i]}">
+                            </div>
+                        </div>
+                    </div>
+                `;
+          container.insertAdjacentHTML("beforeend", laneHtml);
+        }
+      }
+
+      // Gọi lần đầu để vẽ 4 làn mặc định khi mở web
+      renderLaneConfigs();
+
+      // Hàm thu thập dữ liệu và gửi lên Server
+      async function startGame(event) {
+        event.preventDefault(); // Chặn tải lại trang
+
+        if (!isConnected) {
+          alert("Bạn phải kết nối với TikTok Live trước khi Bắt Đầu Đua!");
+          return;
+        }
+
+        const count = 4; // Cố định 4 làn đua
+        const stepLimit = parseInt(document.getElementById("stepLimit").value);
+        const lanesConfig = [];
+
+        // Gom dữ liệu từ các form
+        for (let i = 0; i < count; i++) {
+          lanesConfig.push({
+            id: i,
+            name: document.getElementById(`name-${i}`).value,
+            color: document.getElementById(`color-${i}`).value,
+            emoji: document.getElementById(`emoji-${i}`).value.trim(), // Xe
+            flag: document.getElementById(`flag-${i}`).value.trim(), // Comment
+            gift: document.getElementById(`gift-${i}`).value.trim(),
+          });
+        }
+
+        const gameConfig = {
+          stepLimit: stepLimit,
+          lanes: lanesConfig,
+        };
+
+        // Bắn cấu hình qua socket lên Server để tạo trận đua
+        socket.emit("setup-race", gameConfig);
+        alert("Đã gửi cấu hình thành công! Kiểm tra màn hình OBS.");
+      }
+    </script>
+  </body>
+</html>
